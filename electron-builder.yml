@@ -2,6 +2,8 @@ appId: com.vibe.research
 productName: VibeResearch
 directories:
   output: release/
+publish: null
+
 files:
   - "electron/**/*"
 extraResources:
