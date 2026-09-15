@@ -9,8 +9,10 @@ files:
 extraResources:
   - from: "desktop/dist"
     to: "dist-ui"
-  - from: "dist-backend/orchestrator.bundle.cjs"
-    to: "backend/orchestrator.bundle.cjs"
+  - from: "dist-backend"
+    to: "backend"
+  - from: "orchestrator"
+    to: "backend/orchestrator"
   - from: "portable-python-win64"
     to: "backend/python"
   - from: "calc"

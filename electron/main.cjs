@@ -102,12 +102,15 @@ async function startBackend() {
     pythonBin = fs.existsSync(winVenv) ? winVenv : (fs.existsSync(unixVenv) ? unixVenv : 'python3');
   }
 
+  const backendDir = isPackaged ? path.join(resourcesPath, 'backend') : repoRoot;
   const env = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1', // 让 Electron 自带的 Node 解释器运行后端 JS
     VRA_DATA_ROOT: userDataDir,
+    VRA_REPO_ROOT: backendDir,
     PYTHON_EXECUTABLE: pythonBin,
   };
+
 
   if (isPackaged && fs.existsSync(pythonBin)) {
     const pythonHome = path.dirname(pythonBin);
