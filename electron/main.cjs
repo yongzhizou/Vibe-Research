@@ -3,12 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { spawn } = require('child_process');
-const treeKill = require('tree-kill');
 const { createGateway } = require('./gateway.cjs');
 
 let mainWindow = null;
 let backendProcess = null;
 let gatewayServer = null;
+let backendStderrOutput = '';
 
 const isPackaged = app.isPackaged;
 const repoRoot = path.resolve(__dirname, '..');
@@ -21,11 +21,39 @@ if (!fs.existsSync(userDataDir)) {
 }
 const tokenFilePath = path.join(userDataDir, 'api.token');
 
+/**
+ * 原生进程树终止函数
+ * Windows 下直接使用系统自带的 taskkill.exe /T /F（完全不需要第三方依赖）
+ * POSIX 下使用进程组负号 kill
+ */
+function killProcessTree(pid) {
+  if (!pid) return;
+  try {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } else {
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch {
+        process.kill(pid, 'SIGKILL');
+      }
+    }
+  } catch { }
+}
+
 // 轮询检查后端 8765 端口就绪
 function waitForBackendReady(port = 8765, timeoutMs = 30000) {
   const start = Date.now();
   return new Promise((resolve, reject) => {
     const check = () => {
+      // 若子进程提前异常退出，立即报错，不傻等 30 秒
+      if (backendProcess && backendProcess.exitCode !== null) {
+        return reject(new Error(`后端服务异常退出（退出码 ${backendProcess.exitCode}）:\n${backendStderrOutput || '无详细错误输出'}`));
+      }
+
       let token = '';
       try {
         if (fs.existsSync(tokenFilePath)) {
@@ -50,7 +78,7 @@ function waitForBackendReady(port = 8765, timeoutMs = 30000) {
 
     const retry = () => {
       if (Date.now() - start > timeoutMs) {
-        return reject(new Error(`后端服务启动超时（等待超过 ${timeoutMs / 1000} 秒），请检查后台日志。`));
+        return reject(new Error(`后端服务启动超时（等待超过 ${timeoutMs / 1000} 秒）:\n${backendStderrOutput || '请检查后台服务'}`));
       }
       setTimeout(check, 400);
     };
@@ -88,16 +116,22 @@ async function startBackend() {
   }
 
   const args = [backendScript, '--port', '8765', '--host', '127.0.0.1'];
+  backendStderrOutput = '';
 
-  // 在打包模式下 process.execPath 是 Electron.exe
+  // 在打包模式下 process.execPath 是 VibeResearch.exe
   backendProcess = spawn(process.execPath, args, {
     cwd: isPackaged ? path.join(resourcesPath, 'backend') : repoRoot,
     env,
     stdio: 'pipe',
+    windowsHide: true,
   });
 
   backendProcess.stdout.on('data', (d) => console.log(`[API Stdout] ${d}`));
-  backendProcess.stderr.on('data', (d) => console.error(`[API Stderr] ${d}`));
+  backendProcess.stderr.on('data', (d) => {
+    const msg = d.toString();
+    console.error(`[API Stderr] ${msg}`);
+    backendStderrOutput += msg;
+  });
 
   backendProcess.on('exit', (code) => {
     console.log(`[API Exit] 进程退出，退出码: ${code}`);
@@ -124,7 +158,7 @@ function createWindow() {
     width: 1400,
     height: 900,
     minWidth: 1080,
-    minHeight: 700,
+    minHeight: 720,
     title: 'Vibe Research - 个人投研工作台',
     backgroundColor: '#090d16',
     autoHideMenuBar: true,
@@ -139,9 +173,7 @@ function createWindow() {
 
 function cleanupProcesses() {
   if (backendProcess && backendProcess.pid) {
-    try {
-      treeKill(backendProcess.pid, 'SIGKILL');
-    } catch { }
+    killProcessTree(backendProcess.pid);
     backendProcess = null;
   }
   if (gatewayServer) {
