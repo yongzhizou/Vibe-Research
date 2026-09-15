@@ -89,8 +89,11 @@ function waitForBackendReady(port = 8765, timeoutMs = 30000) {
 
 async function startBackend() {
   const backendScript = isPackaged
-    ? path.join(resourcesPath, 'backend', 'orchestrator.bundle.cjs')
+    ? (fs.existsSync(path.join(resourcesPath, 'backend', 'api.cjs'))
+        ? path.join(resourcesPath, 'backend', 'api.cjs')
+        : path.join(resourcesPath, 'backend', 'orchestrator.bundle.cjs'))
     : path.join(repoRoot, 'orchestrator', 'src', 'api.ts');
+
 
   // 便携 Python 路径
   let pythonBin = '';

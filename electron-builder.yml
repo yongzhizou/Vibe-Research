@@ -11,8 +11,10 @@ extraResources:
     to: "dist-ui"
   - from: "dist-backend"
     to: "backend"
-  - from: "orchestrator/package.json"
-    to: "backend/orchestrator/package.json"
+  - from: "orchestrator"
+    to: "backend/orchestrator"
+    filter:
+      - "!**/node_modules/**"
 
   - from: "portable-python-win64"
     to: "backend/python"

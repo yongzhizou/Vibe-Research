@@ -49,6 +49,8 @@ jobs:
         run: |
           npm run build:ui
           npm run build:backend
+          Remove-Item -Recurse -Force orchestrator/node_modules -ErrorAction SilentlyContinue
+
 
       - name: Package with Electron Builder
         shell: pwsh
