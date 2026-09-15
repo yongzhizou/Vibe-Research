@@ -1,5 +1,7 @@
 import esbuild from 'esbuild';
 import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 if (!fs.existsSync('dist-backend')) {
   fs.mkdirSync('dist-backend', { recursive: true });
@@ -7,14 +9,9 @@ if (!fs.existsSync('dist-backend')) {
 
 console.log('正在使用 esbuild 编译后端模块...');
 
-// 解决 1: Node.js 缺失的浏览器 Geometry & Canvas 全局对象（供给 pdfjs-dist / mammoth 等使用）
-// 解决 2: ESM (import.meta.url) 在打包到 CommonJS 时的 undefined 问题
-const polyfills = `
-// 1. CommonJS URL / path polyfill
-const { pathToFileURL: __pathToFileURL } = require('url');
-const __import_meta_url = __pathToFileURL(__filename).href;
-
-// 2. Browser Geometry & Canvas polyfill for pdfjs-dist in Node.js
+// 解决 1: 全局注入 Node.js 缺失的浏览器 Geometry & Canvas 对象（供 pdfjs-dist / mammoth 等安全调用）
+const browserPolyfills = `
+// Browser Geometry & Canvas polyfills for Node.js
 if (typeof globalThis.DOMMatrix === 'undefined') {
   class DOMMatrix {
     constructor(init) {
@@ -98,17 +95,39 @@ if (typeof globalThis.DOMRect === 'undefined') {
 }
 `;
 
+// 解决 2: 精准处理每个源码文件的 import.meta.url
+// 避免打成单文件后所有子模块误以为自己是 process.argv[1] 触发独立命令行退出 (如 skills_isolation.ts 的 isMain)
+const perModuleImportMetaUrlPlugin = {
+  name: 'per-module-import-meta-url',
+  setup(build) {
+    build.onLoad({ filter: /\.(ts|js|mjs)$/ }, async (args) => {
+      if (args.path.includes('node_modules')) {
+        return null;
+      }
+      let contents = await fs.promises.readFile(args.path, 'utf8');
+      if (contents.includes('import.meta.url')) {
+        // 将该文件内部的 import.meta.url 替换为其独立的真实文件 URL
+        const exactFileUrl = JSON.stringify(pathToFileURL(args.path).href);
+        contents = contents.replace(/\bimport\.meta\.url\b/g, exactFileUrl);
+        return {
+          contents,
+          loader: args.path.endsWith('.ts') ? 'ts' : 'js',
+        };
+      }
+      return null;
+    });
+  },
+};
+
 const commonOptions = {
   bundle: true,
   platform: 'node',
   target: 'node20',
   format: 'cjs',
   sourcemap: false,
-  define: {
-    'import.meta.url': '__import_meta_url',
-  },
+  plugins: [perModuleImportMetaUrlPlugin],
   banner: {
-    js: polyfills,
+    js: browserPolyfills,
   },
   external: [
     'fsevents',
@@ -116,13 +135,13 @@ const commonOptions = {
 };
 
 try {
-  // 1. 编译核心 API 入口为 api.cjs（匹配 isEntryPath 正则）
+  // 1. 编译核心 API 入口为 api.cjs
   await esbuild.build({
     ...commonOptions,
     entryPoints: ['orchestrator/src/api.ts'],
     outfile: 'dist-backend/api.cjs',
   });
-  // 保持兼容性
+  // 同时同步一份 orchestrator.bundle.cjs 保证多路径兼容
   fs.copyFileSync('dist-backend/api.cjs', 'dist-backend/orchestrator.bundle.cjs');
   console.log('✓ 编排器主服务已编译: dist-backend/api.cjs');
 
