@@ -1,0 +1,43 @@
+appId: com.vibe.research
+productName: VibeResearch
+directories:
+  output: release/
+files:
+  - "electron/**/*"
+extraResources:
+  - from: "desktop/dist"
+    to: "dist-ui"
+  - from: "dist-backend/orchestrator.bundle.cjs"
+    to: "backend/orchestrator.bundle.cjs"
+  - from: "portable-python-win64"
+    to: "backend/python"
+  - from: "calc"
+    to: "backend/calc"
+  - from: "backtest"
+    to: "backend/backtest"
+  - from: "datasources"
+    to: "backend/datasources"
+  - from: "providers"
+    to: "backend/providers"
+  - from: "knowledge"
+    to: "backend/knowledge"
+  - from: ".agents"
+    to: "backend/.agents"
+  - from: "codex-version.json"
+    to: "backend/codex-version.json"
+  - from: "vibe-research.config.json"
+    to: "backend/vibe-research.config.json"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true

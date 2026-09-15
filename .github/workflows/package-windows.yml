@@ -1,0 +1,63 @@
+name: Package Windows Electron App (Scheme B)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download Standalone Portable Windows Python
+        shell: pwsh
+        run: |
+          Write-Host "Downloading portable standalone Python 3.11..."
+          $url = "https://github.com/astral-sh/python-build-standalone/releases/download/20240224/cpython-3.11.8+20240224-x86_64-pc-windows-msvc-shared-install_only.tar.gz"
+          Invoke-WebRequest -Uri $url -OutFile "python-standalone.tar.gz"
+          tar -xzf python-standalone.tar.gz
+          Move-Item -Path "python" -Destination "portable-python-win64"
+          ./portable-python-win64/python.exe --version
+
+      - name: Install Python Dependencies into Portable Python
+        shell: pwsh
+        run: |
+          ./portable-python-win64/python.exe -m pip install --upgrade pip
+          if (Test-Path "requirements.txt") {
+            ./portable-python-win64/python.exe -m pip install -r requirements.txt
+          }
+
+      - name: Install Project Node Dependencies
+        shell: pwsh
+        run: |
+          npm install --prefix desktop
+          npm install --prefix orchestrator
+          npm install
+
+      - name: Build Frontend & Backend
+        shell: pwsh
+        run: |
+          npm run build:ui
+          npm run build:backend
+
+      - name: Package with Electron Builder
+        shell: pwsh
+        run: |
+          npx electron-builder --win --config electron-builder.yml
+
+      - name: Upload Windows Executable Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VibeResearch-Windows-x64
+          path: release/*.exe
+          if-no-files-found: error
